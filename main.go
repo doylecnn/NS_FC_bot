@@ -57,8 +57,8 @@ func main() {
 	updates.Clear()
 
 	for update := range updates {
-		if(update.InlineQuery != nil){
-			if update.InlineQuery.Query == "me"{
+		if update.InlineQuery != nil {
+			if update.InlineQuery.Query == "myFC"{
 				text, err := inlineQueryAnswer(db, update.InlineQuery)
 				if err != nil{
 					log.Println(err)

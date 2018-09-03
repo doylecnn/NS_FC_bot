@@ -23,6 +23,9 @@ func (c AddFC) Do(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConf
 	}
 
 	idx := strings.IndexByte(message.Text, ' ')
+	if idx < -1 {
+		return nil, fmt.Errorf("command AddFC not contain ' '")
+	}
 	msg := strings.TrimSpace(message.Text[idx:])
 	var cmdAddFC = regexp.MustCompile("^(?:[sS][wW]-)?((?:\\d{12})|(?:\\d{4}-\\d{4}-\\d{4}))$")
 	submatch := cmdAddFC.FindAllStringSubmatch(msg, 1)

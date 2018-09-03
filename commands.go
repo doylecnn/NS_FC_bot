@@ -45,7 +45,7 @@ func (c AddFC) Do(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConf
 		username = message.From.FirstName + " " + message.From.LastName
 	}
 	_, err = trans.Exec("INSERT INTO NSFC(userid, fc, username) VALUES(:userid, :fc, :username) ON CONFLICT(userid) DO UPDATE SET fc = :fc, username = :username where userid = :userid",
-		sql.Named("username", message.From.ID),
+		sql.Named("userid", message.From.ID),
 		sql.Named("fc", fc),
 		sql.Named("username", username))
 	if err != nil {

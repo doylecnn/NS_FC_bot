@@ -97,7 +97,7 @@ type MyFC struct{ db *sql.DB }
 
 // Do MyFC command
 func (c MyFC) Do(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error) {
-	row := c.db.QueryRow("select * from NSFC where userid = ?", message.From.ID)
+	row := c.db.QueryRow("select * from NSFC where userid = :userid", sql.Named("userid", message.From.ID))
 	var userid, username string
 	var fc int64
 	err = row.Scan(&userid, &fc, &username)
@@ -126,7 +126,7 @@ func (c SFC) Do(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig
 	if len(args) <= 1 {
 		return
 	}
-	row := c.db.QueryRow("select * from NSFC where username = ?", args[1:])
+	row := c.db.QueryRow("select * from NSFC where username = :username", sql.Named("username",args[1:]))
 	var userid, username string
 	var fc int64
 	err = row.Scan(&userid, &fc, &username)
@@ -185,7 +185,7 @@ func friendCodeFormat(fc int64) string {
 
 // inline
 func inlineQueryAnswer(db *sql.DB, query *tgbotapi.InlineQuery) (answer string, err error) {
-	row := db.QueryRow("select * from NSFC where userid = ?", query.From.ID)
+	row := db.QueryRow("select * from NSFC where userid = :userid", sql.Named("userid", query.From.ID))
 	var userid, username string
 	var fc int64
 	err = row.Scan(&userid, &fc, &username)

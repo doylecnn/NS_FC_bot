@@ -10,7 +10,6 @@ type telegramConfig struct {
 	Token         string
 	UpdateTimeout int
 	Debug         bool
-	GroupID       int64
 }
 
 type miscConfig struct {

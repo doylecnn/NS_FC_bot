@@ -44,7 +44,12 @@ func (c AddFC) Do(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConf
 	if len(username) == 0 {
 		username = message.From.FirstName + " " + message.From.LastName
 	}
-	_, err = trans.Exec("INSERT INTO NSFC(userid, fc, username) VALUES(:userid, :fc, :username) ON CONFLICT(userid) DO UPDATE SET fc = :fc, username = :username where userid = :userid",
+	var exists = 0
+	err = trans.QueryRow("SELECT count(1) FROM user_NSFC WHERE userid = :userid and fc = :fc", sql.Named("userid", message.From.ID), sql.Named("fc", fc)).Scan(&exists)
+	if exists != 0{
+		return nil, command.Error{InnerError: err, ReplyText: "您已在其它群登记过FC了，本次操作将永久允许本群查询到您的FC。"}
+	}
+	_, err = trans.Exec("INSERT INTO user_NSFC(userid, fc, username) VALUES(:userid, :fc, :username) ON CONFLICT(userid) DO UPDATE SET fc = :fc, username = :username where userid = :userid",
 		sql.Named("userid", message.From.ID),
 		sql.Named("fc", fc),
 		sql.Named("username", username))
@@ -52,6 +57,7 @@ func (c AddFC) Do(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConf
 		trans.Rollback()
 		return nil, command.Error{InnerError: err, ReplyText: "出错了，请重试。"}
 	}
+	_, err = trans.Exec("INSERT INTO group_user(groupID, userID) VALUES(:groupID, :userID)", sql.Named("groupID", message.Chat.ID), sql.Named("userID", message.From.ID))
 	trans.Commit()
 	return &tgbotapi.MessageConfig{
 			BaseChat: tgbotapi.BaseChat{
@@ -72,14 +78,22 @@ func (c FC) Do(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig,
 	}
 
 	replyToUserID := message.ReplyToMessage.From.ID
-	row := c.db.QueryRow("select * from NSFC where userid = :userid", sql.Named("userid", replyToUserID))
+	row := c.db.QueryRow("select userid, fc, username from user_NSFC where userid = :userid", sql.Named("userid", replyToUserID))
 	var userid, username string
 	var fc int64
 	err = row.Scan(&userid, &fc, &username)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, command.Error{InnerError: err, ReplyText: "他/她还没有告诉我他/她的FC。"}
+			return nil, command.Error{InnerError: err, ReplyText: "他/她还没有登记过FC。"}
 		}
+		return nil, err
+	}
+	var exists = 0
+	err = c.db.QueryRow("select count(1) from group_user where groupID = :groupID and userID = :userID", sql.Named("groupID",message.Chat.ID), sql.Named("userID",userid)).Scan(&exists)
+	if err == sql.ErrNoRows || exists == 0{
+		return nil, command.Error{InnerError: err, ReplyText: "他/她还未 在本群 登记过FC"}
+	}
+	if err != nil {
 		return nil, err
 	}
 	return &tgbotapi.MessageConfig{
@@ -97,14 +111,31 @@ type MyFC struct{ db *sql.DB }
 
 // Do MyFC command
 func (c MyFC) Do(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error) {
-	row := c.db.QueryRow("select * from NSFC where userid = :userid", sql.Named("userid", message.From.ID))
+	row := c.db.QueryRow("select userid, fc, username from user_NSFC where userid = :userid", sql.Named("userid", message.From.ID))
 	var userid, username string
 	var fc int64
 	err = row.Scan(&userid, &fc, &username)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, command.Error{InnerError: err, ReplyText: "你还没告诉我你的fc。\n请使用 /addfc 添加你的fc。"}
+			return nil, command.Error{InnerError: err, ReplyText: "你还未登记过你的fc。\n请使用 /addfc 添加你的fc。"}
 		}
+		return nil, err
+	}
+
+	var exists = 0
+	err = c.db.QueryRow("select count(1) from group_user where groupID = :groupID and userID = :userID", sql.Named("groupID",message.Chat.ID), sql.Named("userID",userid)).Scan(&exists)
+	if err == sql.ErrNoRows || exists == 0{
+		c.db.Exec("INSERT INTO group_user(groupID, userID) VALUES(:groupID, :userID)", sql.Named("groupID", message.Chat.ID), sql.Named("userID", message.From.ID))
+		return &tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:           message.Chat.ID,
+				ReplyToMessageID: message.MessageID,
+				DisableNotification:true},
+			ParseMode:tgbotapi.ModeMarkdown,
+			Text: fmt.Sprintf("[%s](tg://user?id=%s): %s\n本次操作将永久允许本群查询到您的FC。", username, userid, friendCodeFormat(fc))},
+		nil
+	}
+	if err != nil {
 		return nil, err
 	}
 	return &tgbotapi.MessageConfig{
@@ -126,14 +157,22 @@ func (c SFC) Do(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig
 	if len(args) <= 1 {
 		return
 	}
-	row := c.db.QueryRow("select * from NSFC where username = :username", sql.Named("username",args[1:]))
+	row := c.db.QueryRow("select userid, fc, username from user_NSFC where username = :username", sql.Named("username",args[1:]))
 	var userid, username string
 	var fc int64
 	err = row.Scan(&userid, &fc, &username)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, command.Error{InnerError: err, ReplyText: "他/她还没有告诉我他/她的FC"}
+			return nil, command.Error{InnerError: err, ReplyText: "他/她还未登记过FC"}
 		}
+		return nil, err
+	}
+	var exists = 0
+	err = c.db.QueryRow("select count(1) from group_user where groupID = :groupID and userID = :userID", sql.Named("groupID",message.Chat.ID), sql.Named("userID",userid)).Scan(&exists)
+	if err == sql.ErrNoRows || exists == 0{
+		return nil, command.Error{InnerError: err, ReplyText: "他/她还未 在本群 登记过FC"}
+	}
+	if err != nil {
 		return nil, err
 	}
 	return &tgbotapi.MessageConfig{
@@ -151,7 +190,7 @@ type FCList struct{db *sql.DB}
 
 // Do FCList command
 func (c FCList) Do(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConfig, err error) {
-	rows, err := c.db.Query("select * from NSFC")
+	rows, err := c.db.Query("SELECT a.userid, fc, username FROM user_NSFC a JOIN group_user b ON a.userid = b.userid WHERE groupID = :groupID", sql.Named("groupID",message.Chat.ID))
 		if err != nil {
 			return nil, err
 		}
@@ -185,13 +224,13 @@ func friendCodeFormat(fc int64) string {
 
 // inline
 func inlineQueryAnswer(db *sql.DB, query *tgbotapi.InlineQuery) (answer string, err error) {
-	row := db.QueryRow("select * from NSFC where userid = :userid", sql.Named("userid", query.From.ID))
+	row := db.QueryRow("select * from user_NSFC where userid = :userid", sql.Named("userid", query.From.ID))
 	var userid, username string
 	var fc int64
 	err = row.Scan(&userid, &fc, &username)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return "你还没告诉我你的fc。\n请使用 /addfc 添加你的fc。", err
+			return "你还未登记你的fc。\n请使用 /addfc 添加你的fc。", err
 		}
 		return "", err
 	}

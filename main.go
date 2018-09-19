@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+	"os"
+	"path/filepath"
 
 	"github.com/BurntSushi/toml"
 	"gopkg.in/telegram-bot-api.v4"
@@ -17,13 +19,20 @@ import (
 
 func main() {
 	var err error
+
+	exefile, err := os.Executable()
+	if err != nil {
+		panic(err)
+	}
+	exePath := filepath.Dir(exefile)
+
 	var config tomlConfig
-	if _, err = toml.DecodeFile("config.toml", &config); err != nil {
+	if _, err = toml.DecodeFile(filepath.Join(exePath, "config.toml"), &config); err != nil {
 		log.Fatalln(err)
 		return
 	}
 
-	db, err := sql.Open("sqlite3", config.Database.DBName)
+	db, err := sql.Open("sqlite3", filepath.Join(exePath, config.Database.DBName))
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -86,7 +95,7 @@ func main() {
 			bot.AnswerCallbackQuery(tgbotapi.NewCallback(callback.ID,"测试成功"))
 		}else if update.Message != nil{
 			go func(message *tgbotapi.Message){
-				if (message.Chat.IsGroup() || message.Chat.IsSuperGroup()) && message.Chat.ID == config.Telegram.GroupID && message.IsCommand() {
+				if (message.Chat.IsGroup() || message.Chat.IsSuperGroup()) && message.IsCommand() {
 					messageSendTime := time.Unix(int64(message.Date), 0)
 					if time.Since(messageSendTime).Seconds() > 30 {
 						return
@@ -112,19 +121,12 @@ func main() {
 }
 
 func initDB(db *sql.DB) {
-	row := db.QueryRow("select count(1) from sqlite_master where type='table' and name = 'NSFC' and tbl_name='NSFC'")
-	if row != nil {
-		var tableCount = 0
-		err := row.Scan(&tableCount)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		if tableCount == 0 {
-			_, err = db.Exec("CREATE TABLE NSFC(userid int64 not null unique, fc int64 not null unique, username text not null)")
-			if err != nil {
-				log.Fatalln(err)
-			}
-		}
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS user_NSFC(userID int64 not null unique, fc int64 not null, username text not null);
+CREATE UNIQUE INDEX IF NOT EXISTS nsfc_idx_1 ON user_NSFC (userID, fc);
+CREATE TABLE IF NOT EXISTS group_user(groupID not null, userID int64 not null);
+CREATE UNIQUE INDEX IF NOT EXISTS group_idx_1 ON group_user (groupID, userid);`)
+	if err != nil {
+		log.Fatalln(err)
 	}
 }
 

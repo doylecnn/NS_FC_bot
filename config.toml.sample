@@ -2,7 +2,6 @@
 token="TELEGRAM_TOKEN"
 updateTimeout=50
 debug=false
-groupID=USED_GROUP_ID
 
 [misc]
 proxy="http://PROXY_ADDRESS:PORT"

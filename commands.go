@@ -23,7 +23,7 @@ func (c AddFC) Do(message *tgbotapi.Message) (replyMessage *tgbotapi.MessageConf
 	}
 
 	idx := strings.IndexByte(message.Text, ' ')
-	if idx < -1 {
+	if idx == -1 {
 		return nil, fmt.Errorf("command AddFC not contain ' '")
 	}
 	msg := strings.TrimSpace(message.Text[idx:])
